@@ -3,86 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Avalanche Smart Contract DApp</title>
+    <title>AVAX Testnet Wallet</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.6.2/ethers.umd.min.js"></script>
     <style>
-        body {
-            background-color: #1E1E1E;
-            color: #FFFFFF;
-            font-family: Arial, sans-serif;
-            text-align: center;
-            padding: 20px;
-        }
-        .container {
-            max-width: 600px;
-            margin: auto;
-            background: #000000;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0px 0px 15px rgba(255, 0, 0, 0.8);
-            border: 2px solid #E84142;
-        }
-        button {
-            padding: 12px;
-            margin: 10px;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: bold;
-            background: #E84142;
-            color: white;
-            cursor: pointer;
-            transition: 0.3s;
-        }
-        button:hover {
-            background: #FF5A5F;
-        }
-        #walletAddress {
-            font-size: 16px;
-            color: #E84142;
-            font-weight: bold;
-        }
-        .transaction-list {
-            text-align: left;
-            max-height: 400px;
-            overflow-y: auto;
-            margin-top: 10px;
-            background: #1E1E1E;
-            padding: 15px;
-            border-radius: 6px;
-            border: 1px solid #E84142;
-        }
-        .transaction {
-            border-bottom: 1px solid #E84142;
-            padding: 10px;
-        }
-        a {
-            color: #FF5A5F;
-            text-decoration: none;
-            font-weight: bold;
-        }
-        a:hover {
-            color: #FFFFFF;
-        }
+        body { background-color: #1E1E1E; color: white; font-family: Arial, sans-serif; text-align: center; }
+        .container { max-width: 600px; margin: auto; background: #000000; padding: 20px; border-radius: 12px; box-shadow: 0px 0px 15px rgba(255, 0, 0, 0.8); border: 2px solid #E84142; }
+        .btn-container { display: flex; justify-content: center; gap: 10px; margin-bottom: 15px; } /* ✅ Button Alignment */
+        button { padding: 12px; margin: 5px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; background: #E84142; color: white; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #FF5A5F; }
+        .logout-btn { background: #FF5733; display: none; } /* ✅ Initially Hidden */
+        .logout-btn:hover { background: #D32F2F; }
+        input { padding: 10px; margin: 10px; width: 80%; border-radius: 5px; border: 1px solid #E84142; background: black; color: white; }
+        .notification { color: #FFD700; font-weight: bold; margin-top: 15px; }
+        .success { color: #4CAF50; }
+        .error { color: #FF5733; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h2 style="color: #E84142;">Avalanche DApp: Wallet Transactions</h2>
-        <button id="connectWallet">Connect Wallet</button>
-        <p id="walletAddress"></p>
+        <h2 style="color: #E84142;">AVAX Testnet Wallet</h2>
 
-        <h3 style="color: #E84142;">Transaction History</h3>
-        <div id="logResults" class="transaction-list"></div>
+        <div class="btn-container"> <!-- ✅ Organized Buttons -->
+            <button onclick="connectWallet()">Connect Wallet</button>
+            <button id="logoutBtn" class="logout-btn" onclick="logoutWallet()">Log Out</button>
+        </div>
+
+        <p id="walletAddress"></p>
+        <p id="walletBalance"></p>
+
+        <h3>Send AVAX (Directly From Wallet)</h3>
+        <div style="display: flex; flex-direction: column; align-items: center;"> 
+            <input type="text" id="recipient" placeholder="Recipient Address">
+            <input type="text" id="sendAmount" placeholder="Amount (AVAX)">
+            <button onclick="sendAVAX()" style="margin-top: 10px;">Send</button> <!-- ✅ Button Always Below -->
+        </div>        
+        
+        <p id="notification" class="notification"></p> 
+
+        <h3>Transaction History</h3>
+        <button onclick="openTransactionsPage()">View Transactions</button>
     </div>
 
     <script>
-        let provider;
-        let signer;
-        let userAddress;
-
-        const SNOWTRACE_API_KEY = "YOUR_SNOWTRACE_API_KEY"; // Replace with your API Key
+        const SNOWTRACE_API_KEY = "YOUR_SNOWTRACE_API_KEY"; 
         const SNOWTRACE_API_URL = "https://api-testnet.snowtrace.io/api";
+        
+        let provider, signer, userAddress, lastTransactionHash = null;
 
         async function connectWallet() {
             if (window.ethereum) {
@@ -90,52 +56,153 @@
                     provider = new ethers.BrowserProvider(window.ethereum);
                     signer = await provider.getSigner();
                     userAddress = await signer.getAddress();
-                    document.getElementById("walletAddress").innerText = `Connected: ${userAddress}`;
+                    
+                    const network = await provider.getNetwork();
+                    console.log("Connected to network:", network.chainId);
 
-                    // ✅ Automatically fetch transactions after connecting
-                    fetchTransactions(userAddress);
+                    if (network.chainId !== 43113) { 
+                        displayMessage("⚠️ You are not on Avalanche Fuji Testnet. Switching now...", "error");
+                        await switchToFujiTestnet();
+                    } else {
+                        displayMessage("✅ Wallet connected successfully!", "success");
+                    }
+
+                    sessionStorage.setItem("walletConnected", userAddress);
+                    document.getElementById("walletAddress").innerText = `Connected: ${userAddress}`;
+                    document.getElementById("logoutBtn").style.display = "block"; // ✅ Show Log Out Button
+
+                    fetchBalance();
+                    trackTransactions();
                 } catch (error) {
-                    alert("Connection failed!");
+                    console.error("Wallet Connection Error:", error);
+                    displayMessage("❌ Failed to connect wallet! Please approve the connection.", "error");
                 }
             } else {
-                alert("MetaMask not detected!");
+                displayMessage("❌ Core Wallet not detected! Please install it.", "error");
             }
         }
 
-        async function fetchTransactions(address) {
-            const logResults = document.getElementById("logResults");
-            logResults.innerHTML = "<p>Loading transactions...</p>";
+        async function switchToFujiTestnet() {
+            try {
+                await window.ethereum.request({
+                    method: "wallet_addEthereumChain",
+                    params: [{
+                        chainId: "0xa869",
+                        chainName: "Avalanche Fuji C-Chain",
+                        rpcUrls: ["https://api.avax-test.network/ext/bc/C/rpc"],
+                        nativeCurrency: { name: "Avalanche", symbol: "AVAX", decimals: 18 },
+                        blockExplorerUrls: ["https://testnet.snowtrace.io/"]
+                    }]
+                });
+            } catch (error) {
+                console.error("Network switch error:", error);
+                displayMessage("⚠️ Please manually switch to Avalanche Fuji Testnet in Core Wallet.", "error");
+            }
+        }
+
+        async function sendAVAX() {
+            const recipient = document.getElementById("recipient").value;
+            const amount = document.getElementById("sendAmount").value;
+
+            if (!recipient || !amount) {
+                displayMessage("⚠️ Please enter recipient address and amount.", "error");
+                return;
+            }
 
             try {
-                const response = await fetch(`${SNOWTRACE_API_URL}?module=account&action=txlist&address=${address}&sort=desc&apikey=${SNOWTRACE_API_KEY}`);
-                const data = await response.json();
-
-                if (data.status === "1") {
-                    logResults.innerHTML = ""; // Clear previous results
-
-                    data.result.forEach(tx => {
-                        logResults.innerHTML += `
-                            <div class="transaction">
-                                <p><strong>Tx Hash:</strong> <a href="https://testnet.snowtrace.io/tx/${tx.hash}" target="_blank">${tx.hash}</a></p>
-                                <p><strong>From:</strong> ${tx.from}</p>
-                                <p><strong>To:</strong> ${tx.to}</p>
-                                <p><strong>Value:</strong> ${(parseInt(tx.value) / 10**18).toFixed(6)} AVAX</p>
-                                <p><strong>Gas Used:</strong> ${tx.gasUsed}</p>
-                                <p><strong>Gas Price:</strong> ${(parseInt(tx.gasPrice) / 10**9).toFixed(2)} Gwei</p>
-                                <p><strong>Timestamp:</strong> ${new Date(tx.timeStamp * 1000).toLocaleString()}</p>
-                                <hr>
-                            </div>`;
-                    });
-                } else {
-                    logResults.innerHTML = "<p>No transactions found.</p>";
+                if (!signer) {
+                    displayMessage("⚠️ Wallet not connected! Please connect your wallet first.", "error");
+                    return;
                 }
+
+                console.log("Preparing transaction...");
+                displayMessage("⏳ Sending transaction...", "notification");
+
+                const tx = await signer.sendTransaction({
+                    to: recipient,
+                    value: ethers.parseUnits(amount, "ether")
+                });
+
+                console.log("Transaction sent! Waiting for confirmation...", tx);
+                await tx.wait();
+
+                lastTransactionHash = tx.hash;
+                displayMessage(`✅ Transaction Successful!<br>Tx Hash: <a href="https://testnet.snowtrace.io/tx/${tx.hash}" target="_blank">${tx.hash}</a>`, "success");
+
+                fetchBalance();
             } catch (error) {
-                console.error("Error fetching transactions:", error);
-                logResults.innerHTML = "<p style='color: red;'>Failed to fetch transactions.</p>";
+                console.error("Transaction Error:", error);
+                displayMessage("❌ Transaction Failed: " + error.message, "error");
             }
         }
 
-        document.getElementById("connectWallet").addEventListener("click", connectWallet);
+        async function fetchBalance() {
+            if (!signer) {
+                displayMessage("⚠️ Wallet not connected! Please connect your wallet first.", "error");
+                return;
+            }
+
+            try {
+                const balance = await provider.getBalance(userAddress);
+                document.getElementById("walletBalance").innerText = `Wallet Balance: ${ethers.formatEther(balance)} AVAX`;
+            } catch (error) {
+                console.error("❌ Error fetching balance:", error);
+                displayMessage("❌ Failed to load balance.", "error");
+            }
+        }
+
+        function openTransactionsPage() {
+            window.location.href = "transactions.html";
+        }
+
+        function logoutWallet() {
+            sessionStorage.removeItem("walletConnected");
+            userAddress = null;
+            provider = null;
+            signer = null;
+
+            document.getElementById("walletAddress").innerText = "Disconnected";
+            document.getElementById("walletBalance").innerText = "";
+            document.getElementById("logoutBtn").style.display = "none"; // ✅ Hide Log Out Button
+            displayMessage("✅ Successfully logged out!", "success");
+        }
+
+        async function trackTransactions() {
+            if (!userAddress) return;
+
+            setInterval(async () => {
+                try {
+                    const response = await fetch(`${SNOWTRACE_API_URL}?module=account&action=txlist&address=${userAddress}&sort=desc&apikey=${SNOWTRACE_API_KEY}`);
+                    const data = await response.json();
+
+                    if (data.status === "1" && data.result.length > 0) {
+                        const latestTx = data.result[0];
+                        
+                        if (latestTx.hash !== lastTransactionHash) {
+                            lastTransactionHash = latestTx.hash;
+                            displayMessage(`🎉 New Transaction Detected!<br>Tx Hash: <a href="https://testnet.snowtrace.io/tx/${latestTx.hash}" target="_blank">${latestTx.hash}</a>`, "success");
+                            fetchBalance();
+                        }
+                    }
+                } catch (error) {
+                    console.error("❌ Error fetching transactions:", error);
+                }
+            }, 10000);
+        }
+
+        function displayMessage(message, type) {
+            const notificationEl = document.getElementById("notification");
+            notificationEl.innerHTML = message;
+            notificationEl.className = `notification ${type}`;
+        }
+
+        window.onload = () => {
+            const savedAddress = sessionStorage.getItem("walletConnected");
+            if (savedAddress) {
+                userAddress = savedAddress;
+                connectWallet();
+            }
+        };
     </script>
 </body>
 </html>
