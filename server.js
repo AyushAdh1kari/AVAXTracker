@@ -8,13 +8,18 @@ const PORT = 3000;
 // Snowtrace API Key (Replace with your actual key)
 const API_KEY = "YOUR_SNOWTRACE_API_KEY";
 
-// ✅ Serve static files from 'public' (but NOT index.html)
-app.use(express.static("public"));
-app.use(express.json());
+// ✅ Serve static files from the root and 'public' folder
+app.use(express.static(__dirname)); // Serve files from the root
+app.use(express.static("public"));  // Serve files from 'public'
 
-// ✅ Serve index.html from the root folder
+// ✅ Serve index.html from the root directory
 app.get("/", (req, res) => {
     res.sendFile(path.join(__dirname, "index.html"));
+});
+
+// ✅ Serve transactions.html explicitly
+app.get("/transactions.html", (req, res) => {
+    res.sendFile(path.join(__dirname, "transactions.html"));
 });
 
 // ✅ Fetch transactions using Snowtrace API
